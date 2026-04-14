@@ -1,17 +1,21 @@
-# create-mobilewright
+# Create Mobilewright
 
-Scaffold a [mobilewright](https://mobilewright.dev) test project.
-
-## Usage
+Getting started with Mobilewright with a single "npm init" command
 
 ```sh
 npm init mobilewright
+# Or for Yarn
+yarn create mobilewright
+# Or for pnpm
+pnpm create mobilewright
 ```
 
-This will:
+Follow the instructions on screen to create a scaffold Mobilewright test project:
 
-1. Ask whether you want TypeScript or JavaScript
-2. Ask for your test directory name (default: `tests`)
-3. Create a `mobilewright.config.ts` (or `.js`) file
-4. Create an example spec file in your test directory
-5. Install dependencies
+```text
+mobilewright.config.ts
+package.json
+package-lock.json
+tests/
+  example.spec.ts
+```
