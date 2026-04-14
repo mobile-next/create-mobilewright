@@ -40,8 +40,12 @@ function createConfigFile(targetDir: string, testDir: string, language: Language
     ? `import { defineConfig } from '@mobilewright/test';\n`
     : `const { defineConfig } = require('@mobilewright/test');\n`;
 
+  const exportLine = language === "ts"
+    ? "export default defineConfig"
+    : "module.exports = defineConfig";
+
   const content = `${importLine}
-export default defineConfig({
+${exportLine}({
   testDir: './${testDir}',
   reporter: 'html',
 });
@@ -54,7 +58,11 @@ function createTestFile(targetDir: string, testDir: string, language: Language):
   const ext = language === "ts" ? "ts" : "js";
   const fullTestDir = path.join(targetDir, testDir);
   fs.mkdirSync(fullTestDir, { recursive: true });
-  const content = `import { test, expect } from '@mobilewright/test';
+  const importLine = language === "ts"
+    ? `import { test, expect } from '@mobilewright/test';`
+    : `const { test, expect } = require('@mobilewright/test');`;
+
+  const content = `${importLine}
 
 test.use({ bundleId: "com.example.app" });
 
