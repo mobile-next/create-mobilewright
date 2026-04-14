@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import prompts from "prompts";
-import spawn from "cross-spawn";
+import { execSync } from "child_process";
 
 type Language = "ts" | "js";
 
@@ -19,7 +19,8 @@ function createPackageJson(targetDir: string, language: Language): void {
     ...(typeof pkg.devDependencies === "object" && pkg.devDependencies !== null
       ? (pkg.devDependencies as Record<string, string>)
       : {}),
-    "@mobilewright/test": "latest",
+    "@mobilewright/test": "0.0.21",
+    "mobilewright": "0.0.21",
   };
 
   if (language === "ts") {
@@ -31,11 +32,20 @@ function createPackageJson(targetDir: string, language: Language): void {
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 }
 
-function createConfigFile(targetDir: string, language: Language): void {
+function createConfigFile(targetDir: string, testDir: string, language: Language): void {
   const ext = language === "ts" ? "ts" : "js";
   const configPath = path.join(targetDir, `mobilewright.config.${ext}`);
-  const content =
-    language === "ts" ? "export default {};\n" : "module.exports = {};\n";
+
+  const importLine = language === "ts"
+    ? `import { defineConfig } from '@mobilewright/test';\n`
+    : `const { defineConfig } = require('@mobilewright/test');\n`;
+
+  const content = `${importLine}
+export default defineConfig({
+  testDir: './${testDir}',
+  reporter: 'html',
+});
+`;
 
   fs.writeFileSync(configPath, content);
 }
@@ -44,18 +54,26 @@ function createTestFile(targetDir: string, testDir: string, language: Language):
   const ext = language === "ts" ? "ts" : "js";
   const fullTestDir = path.join(targetDir, testDir);
   fs.mkdirSync(fullTestDir, { recursive: true });
-  fs.writeFileSync(path.join(fullTestDir, `example.spec.${ext}`), "");
+  const content = `import { test, expect } from '@mobilewright/test';
+
+test.use({ bundleId: "com.example.app" });
+
+test('app launches and shows home screen', async ({ screen }) => {
+  await expect(screen.getByText('Welcome')).toBeVisible();
+});
+`;
+  fs.writeFileSync(path.join(fullTestDir, `example.spec.${ext}`), content);
 }
 
 function runNpmInstall(targetDir: string): void {
   console.log("\nInstalling dependencies...\n");
 
-  const result = spawn.sync("npm", ["install"], {
-    cwd: targetDir,
-    stdio: "inherit",
-  });
-
-  if (result.status !== 0) {
+  try {
+    execSync("npm install", {
+      cwd: targetDir,
+      stdio: "inherit",
+    });
+  } catch {
     console.error("Failed to install dependencies.");
     process.exit(1);
   }
@@ -104,7 +122,7 @@ async function main() {
   const targetDir = process.cwd();
 
   createPackageJson(targetDir, language);
-  createConfigFile(targetDir, language);
+  createConfigFile(targetDir, testDir, language);
   createTestFile(targetDir, testDir, language);
 
   runNpmInstall(targetDir);
