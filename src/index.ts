@@ -3,6 +3,7 @@
 import fs from "fs";
 import path from "path";
 import prompts from "prompts";
+import spawn from "cross-spawn";
 
 type Language = "ts" | "js";
 
@@ -44,6 +45,20 @@ function createTestFile(targetDir: string, testDir: string, language: Language):
   const fullTestDir = path.join(targetDir, testDir);
   fs.mkdirSync(fullTestDir, { recursive: true });
   fs.writeFileSync(path.join(fullTestDir, `example.spec.${ext}`), "");
+}
+
+function runNpmInstall(targetDir: string): void {
+  console.log("\nInstalling dependencies...\n");
+
+  const result = spawn.sync("npm", ["install"], {
+    cwd: targetDir,
+    stdio: "inherit",
+  });
+
+  if (result.status !== 0) {
+    console.error("Failed to install dependencies.");
+    process.exit(1);
+  }
 }
 
 async function main() {
@@ -92,7 +107,15 @@ async function main() {
   createConfigFile(targetDir, language);
   createTestFile(targetDir, testDir, language);
 
-  console.log("Files created successfully.");
+  runNpmInstall(targetDir);
+
+  console.log(`
+Success! Created mobilewright project.
+
+Inside the "${testDir}" directory, you can run:
+  npx mobilewright test
+
+Visit https://mobilewright.dev for more information.`);
 }
 
 main();
