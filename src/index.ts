@@ -37,8 +37,8 @@ function createConfigFile(targetDir: string, testDir: string, language: Language
   const configPath = path.join(targetDir, `mobilewright.config.${ext}`);
 
   const importLine = language === "ts"
-    ? `import { defineConfig } from '@mobilewright/test';\n`
-    : `const { defineConfig } = require('@mobilewright/test');\n`;
+    ? `import { defineConfig } from 'mobilewright';\n`
+    : `const { defineConfig } = require('mobilewright');\n`;
 
   const exportLine = language === "ts"
     ? "export default defineConfig"
