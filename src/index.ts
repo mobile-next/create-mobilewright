@@ -19,8 +19,8 @@ function createPackageJson(targetDir: string, language: Language): void {
     ...(typeof pkg.devDependencies === "object" && pkg.devDependencies !== null
       ? (pkg.devDependencies as Record<string, string>)
       : {}),
-    "@mobilewright/test": "0.0.21",
-    "mobilewright": "0.0.21",
+    "@mobilewright/test": "0.0.22",
+    "mobilewright": "0.0.22",
   };
 
   if (language === "ts") {
@@ -37,8 +37,8 @@ function createConfigFile(targetDir: string, testDir: string, language: Language
   const configPath = path.join(targetDir, `mobilewright.config.${ext}`);
 
   const importLine = language === "ts"
-    ? `import { defineConfig } from '@mobilewright/test';\n`
-    : `const { defineConfig } = require('@mobilewright/test');\n`;
+    ? `import { defineConfig } from 'mobilewright';\n`
+    : `const { defineConfig } = require('mobilewright');\n`;
 
   const exportLine = language === "ts"
     ? "export default defineConfig"
