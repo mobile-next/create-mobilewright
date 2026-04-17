@@ -9,6 +9,7 @@
     "dist"
   ],
   "scripts": {
+    "lint": "eslint src/",
     "build": "tsc",
     "postbuild": "chmod +x dist/index.js",
     "prepublishOnly": "npm run build"
@@ -19,6 +20,9 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/prompts": "^2.4.9",
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
+    "@typescript-eslint/parser": "^8.58.2",
+    "eslint": "^10.2.0",
     "typescript": "^5.4.0"
   },
   "engines": {
