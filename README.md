@@ -19,3 +19,5 @@ package-lock.json
 tests/
   example.spec.ts
 ```
+
+![create-mobilewright screenshot](docs/screenshot.png)
