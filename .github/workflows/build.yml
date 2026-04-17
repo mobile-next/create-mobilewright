@@ -36,6 +36,9 @@ jobs:
     - name: Audit
       run: npm audit --audit-level high --omit dev
 
+    - name: Lint
+      run: npm run lint
+
     - name: Update version
       if: github.ref_type == 'tag'
       env:
