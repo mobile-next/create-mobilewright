@@ -117,12 +117,17 @@ function createTestFile(targetDir: string, testDir: string, language: Language):
     ? `import { test, expect } from '@mobilewright/test';`
     : `const { test, expect } = require('@mobilewright/test');`;
 
-  const content = `${importLine}
-
-test('app launches and shows home screen', async ({ screen }) => {
-  await expect(screen.getByText('Welcome')).toBeVisible();
-});
-`;
+  const content = [
+    "// this is a skeleton test for mobilewright (see https://github.com/mobile-next/mobilewright/blob/main/README.md)",
+    "// for documentation see: https://mobilewright.dev/docs/",
+    "// for agent skill see: https://github.com/mobile-next/mobilewright-skill",
+    importLine,
+    "",
+    "test('app launches and shows home screen', async ({ screen }) => {",
+    "  await expect(screen.getByText('Welcome')).toBeVisible();",
+    "});",
+    "",
+  ].join("\n");
   fs.writeFileSync(path.join(fullTestDir, `example.spec.${ext}`), content);
 }
 
