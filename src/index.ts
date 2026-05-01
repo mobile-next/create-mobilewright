@@ -72,8 +72,8 @@ function createPackageJson(targetDir: string, language: Language): void {
     ...(typeof pkg.devDependencies === "object" && pkg.devDependencies !== null
       ? (pkg.devDependencies as Record<string, string>)
       : {}),
-    "@mobilewright/test": "0.0.22",
-    "mobilewright": "0.0.22",
+    "@mobilewright/test": "0.0.30",
+    "mobilewright": "0.0.30",
   };
 
   if (language === "ts") {
