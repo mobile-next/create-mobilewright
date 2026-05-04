@@ -72,8 +72,8 @@ function createPackageJson(targetDir: string, language: Language): void {
     ...(typeof pkg.devDependencies === "object" && pkg.devDependencies !== null
       ? (pkg.devDependencies as Record<string, string>)
       : {}),
-    "@mobilewright/test": "0.0.30",
-    "mobilewright": "0.0.30",
+    "@mobilewright/test": "0.0.31",
+    "mobilewright": "0.0.31",
   };
 
   if (language === "ts") {
@@ -123,7 +123,7 @@ function createTestFile(targetDir: string, testDir: string, language: Language):
     "// for agent skill see: https://github.com/mobile-next/mobilewright-skill",
     importLine,
     "",
-    "test('app launches and shows home screen', async ({ screen }) => {",
+    "test('app launches and shows home screen', async ({ screen, device }) => {",
     "  await expect(screen.getByText('Welcome')).toBeVisible();",
     "});",
     "",
