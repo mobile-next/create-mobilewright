@@ -1,156 +1,56 @@
 #!/usr/bin/env node
 
+import "./no-color";
 import fs from "fs";
 import path from "path";
 import prompts from "prompts";
 import { execSync } from "child_process";
+import { detectApps, DetectedApp, Platform } from "./detect";
+import {
+  chooseDefaultTestDir,
+  createConfigContent,
+  createNewPackageJson,
+  createTestContent,
+  createTsconfigContent,
+  describeRunnerExclusion,
+  detectOtherTestRunners,
+  findInstallProblem,
+  isSupportedNodeVersion,
+  Language,
+  MINIMUM_NODE_VERSION,
+  normalizeTestDir,
+  patchGitignore,
+  readPackageJson,
+  TestRunner,
+  updatePackageJson,
+  UserFacingError,
+  validateTestDir,
+} from "./project";
 
-type Language = "ts" | "js";
+type Answers = {
+  language: Language;
+  platform: Platform;
+  bundleId: string;
+  testDir: string;
+};
 
-function getSearchDirs(cwd: string): string[] {
-  const dirs = [cwd];
-  const basename = path.basename(cwd).toLowerCase();
-  if (basename === "test" || basename === "tests") {
-    dirs.push(path.dirname(cwd));
-  }
-  return dirs;
+const CANCELLED_EXIT_CODE = 130;
+
+function exitIfNodeIsUnsupported(): void {
+  const version = process.versions.node;
+  if (isSupportedNodeVersion(version)) return;
+  console.error(`mobilewright requires Node.js ${MINIMUM_NODE_VERSION} or newer (you have ${version}).`);
+  console.error("Upgrade Node.js (for example: nvm install 24) and run npm init mobilewright@latest again.");
+  process.exit(1);
 }
 
-function detectIosBundleId(dirs: string[]): string | undefined {
-  for (const dir of dirs) {
-    const entries = fs.readdirSync(dir);
-    for (const entry of entries) {
-      if (entry.endsWith(".xcodeproj")) {
-        const pbxprojPath = path.join(dir, entry, "project.pbxproj");
-        if (fs.existsSync(pbxprojPath)) {
-          const content = fs.readFileSync(pbxprojPath, "utf-8");
-          const match = content.match(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*"?([^";]+)"?\s*;/);
-          if (match) {
-            return match[1].trim();
-          }
-        }
-      }
-    }
-  }
-  return undefined;
+function findDetectedApp(apps: DetectedApp[], platform: Platform): DetectedApp | undefined {
+  return apps.find((app) => app.platform === platform);
 }
 
-function detectAndroidPackageName(dirs: string[]): string | undefined {
-  for (const dir of dirs) {
-    const appDir = path.join(dir, "app");
-    if (!fs.existsSync(appDir)) continue;
-
-    for (const filename of ["build.gradle.kts", "build.gradle"]) {
-      const gradlePath = path.join(appDir, filename);
-      if (!fs.existsSync(gradlePath)) continue;
-
-      const content = fs.readFileSync(gradlePath, "utf-8");
-      const appIdMatch = content.match(/applicationId\s*=?\s*"([^"]+)"/);
-      if (appIdMatch) return appIdMatch[1];
-
-      const namespaceMatch = content.match(/namespace\s*=?\s*"([^"]+)"/);
-      if (namespaceMatch) return namespaceMatch[1];
-    }
-  }
-  return undefined;
-}
-
-function detectBundleId(): string {
-  const dirs = getSearchDirs(process.cwd());
-  return detectIosBundleId(dirs) ?? detectAndroidPackageName(dirs) ?? "";
-}
-
-function createPackageJson(targetDir: string, language: Language): void {
-  const pkgPath = path.join(targetDir, "package.json");
-
-  let pkg: Record<string, unknown> = {};
-  if (fs.existsSync(pkgPath)) {
-    pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-  }
-
-  const devDeps: Record<string, string> = {
-    ...(typeof pkg.devDependencies === "object" && pkg.devDependencies !== null
-      ? (pkg.devDependencies as Record<string, string>)
-      : {}),
-    "@mobilewright/test": "0.0.57",
-    "mobilewright": "0.0.57",
-  };
-
-  if (language === "ts") {
-    devDeps["@types/node"] = "latest";
-  }
-
-  pkg.devDependencies = devDeps;
-
-  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-}
-
-function createConfigFile(targetDir: string, testDir: string, language: Language, bundleId: string): void {
-  const ext = language === "ts" ? "ts" : "js";
-  const configPath = path.join(targetDir, `mobilewright.config.${ext}`);
-
-  const importLine = language === "ts"
-    ? `import { defineConfig } from 'mobilewright';\n`
-    : `const { defineConfig } = require('mobilewright');\n`;
-
-  const exportLine = language === "ts"
-    ? "export default defineConfig"
-    : "module.exports = defineConfig";
-
-  const bundleIdLine = bundleId ? `\n  bundleId: '${bundleId}',` : "";
-
-  const content = `${importLine}
-${exportLine}({
-  testDir: './${testDir}',${bundleIdLine}
-  reporter: 'html',
-});
-`;
-
-  fs.writeFileSync(configPath, content);
-}
-
-function createTestFile(targetDir: string, testDir: string, language: Language): void {
-  const ext = language === "ts" ? "ts" : "js";
-  const fullTestDir = path.join(targetDir, testDir);
-  fs.mkdirSync(fullTestDir, { recursive: true });
-  const importLine = language === "ts"
-    ? `import { test, expect } from '@mobilewright/test';`
-    : `const { test, expect } = require('@mobilewright/test');`;
-
-  const content = [
-    "// this is a skeleton test for mobilewright (see https://github.com/mobile-next/mobilewright/blob/main/README.md)",
-    "// for documentation see: https://mobilewright.dev/docs/",
-    "// for agent skill see: https://github.com/mobile-next/mobilewright-skill",
-    importLine,
-    "",
-    "test('app launches and shows home screen', async ({ screen, device }) => {",
-    "  await expect(screen.getByText('Welcome')).toBeVisible();",
-    "});",
-    "",
-  ].join("\n");
-  fs.writeFileSync(path.join(fullTestDir, `example.spec.${ext}`), content);
-}
-
-function runNpmInstall(targetDir: string): void {
-  console.log("\nInstalling dependencies...\n");
-
-  try {
-    execSync("npm install", {
-      cwd: targetDir,
-      stdio: "inherit",
-    });
-  } catch {
-    console.error("Failed to install dependencies.");
-    process.exit(1);
-  }
-}
-
-async function main() {
-  console.log(
-    "Getting started with writing mobile automation and end-to-end tests"
-  );
-
-  const detectedBundleId = detectBundleId();
+async function askQuestions(targetDir: string, apps: DetectedApp[], defaultTestDir: string): Promise<Answers> {
+  const platforms: Platform[] = ["ios", "android"];
+  const detectedPlatform = apps[0]?.platform ?? "ios";
 
   const response = await prompts(
     [
@@ -165,50 +65,134 @@ async function main() {
         initial: 0,
       },
       {
-        type: "text",
-        name: "testDir",
-        message: "Directory name for test files?",
-        initial: "tests",
+        type: "select",
+        name: "platform",
+        message: "Which platform do you want to test?",
+        choices: [
+          { title: "iOS", value: "ios" },
+          { title: "Android", value: "android" },
+        ],
+        initial: platforms.indexOf(detectedPlatform),
       },
       {
         type: "text",
         name: "bundleId",
-        message: "What is the app bundle ID to test? (Leave empty to skip)",
-        initial: detectedBundleId,
+        message: (platform: Platform) => {
+          const detected = findDetectedApp(apps, platform);
+          const hint = detected ? `detected from ${detected.source}` : "leave empty to skip";
+          return `What is the app bundle ID to test? (${hint})`;
+        },
+        initial: (platform: Platform) => findDetectedApp(apps, platform)?.bundleId ?? "",
+        format: (value: string) => value.trim(),
+      },
+      {
+        type: "text",
+        name: "testDir",
+        message: "Directory name for test files?",
+        initial: defaultTestDir,
+        format: (value: string) => normalizeTestDir(targetDir, value),
+        validate: (value: string) => validateTestDir(targetDir, value),
       },
     ],
     {
       onCancel: () => {
-        process.exit(0);
+        console.log("\nCancelled. No files were changed.");
+        process.exit(CANCELLED_EXIT_CODE);
       },
     }
   );
+  return response as Answers;
+}
 
-  const { language, testDir, bundleId } = response as {
-    language: Language;
-    testDir: string;
-    bundleId: string;
-  };
+function writeFileIfMissing(filePath: string, content: string): void {
+  if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, content);
+}
 
-  if (!language || !testDir) {
-    process.exit(0);
+function writeProjectFiles(targetDir: string, answers: Answers): void {
+  const { language, testDir } = answers;
+  const validation = validateTestDir(targetDir, testDir);
+  if (validation !== true) throw new UserFacingError(validation);
+  const pkgPath = path.join(targetDir, "package.json");
+  const pkg = readPackageJson(pkgPath) ?? createNewPackageJson(targetDir);
+  fs.writeFileSync(pkgPath, JSON.stringify(updatePackageJson(pkg, language, process.versions.node), null, 2) + "\n");
+
+  fs.writeFileSync(path.join(targetDir, `mobilewright.config.${language}`), createConfigContent(answers));
+
+  const fullTestDir = path.join(targetDir, testDir);
+  fs.mkdirSync(fullTestDir, { recursive: true });
+  fs.writeFileSync(path.join(fullTestDir, `example.spec.${language}`), createTestContent(language));
+
+  if (language === "ts") {
+    writeFileIfMissing(path.join(targetDir, "tsconfig.json"), createTsconfigContent(testDir));
   }
 
-  const targetDir = process.cwd();
+  const gitignorePath = path.join(targetDir, ".gitignore");
+  const gitignore = patchGitignore(fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf-8") : undefined);
+  if (gitignore !== undefined) fs.writeFileSync(gitignorePath, gitignore);
+}
 
-  createPackageJson(targetDir, language);
-  createConfigFile(targetDir, testDir, language, bundleId);
-  createTestFile(targetDir, testDir, language);
+function runNpmInstall(targetDir: string): void {
+  console.log("\nInstalling dependencies...\n");
 
-  runNpmInstall(targetDir);
+  try {
+    // --include=dev: otherwise NODE_ENV=production silently skips every devDependency
+    execSync("npm install --include=dev", {
+      cwd: targetDir,
+      stdio: "inherit",
+    });
+  } catch {
+    console.error("Failed to install dependencies.");
+    process.exit(1);
+  }
+}
 
+function printSuccess(runners: TestRunner[], testDir: string): void {
   console.log(`
 Success! Created mobilewright project.
 
-Inside the "${testDir}" directory, you can run:
+From this directory, you can run:
   npx mobilewright test
 
 Visit https://mobilewright.dev for more information.`);
+
+  if (runners.length > 0) {
+    console.log(`
+Your project also uses ${runners.join(", ")}. To keep it from picking up the mobile tests in "${testDir}":`);
+    for (const runner of runners) {
+      console.log(`  ${describeRunnerExclusion(runner, testDir)}`);
+    }
+  }
 }
 
-main();
+async function main() {
+  exitIfNodeIsUnsupported();
+
+  console.log(
+    "Getting started with writing mobile automation and end-to-end tests"
+  );
+
+  const targetDir = process.cwd();
+  const existingPkg = readPackageJson(path.join(targetDir, "package.json")) ?? {};
+  const runners = detectOtherTestRunners(targetDir, existingPkg);
+  const answers = await askQuestions(targetDir, detectApps(targetDir), chooseDefaultTestDir(targetDir, runners));
+
+  writeProjectFiles(targetDir, answers);
+  runNpmInstall(targetDir);
+
+  const problem = findInstallProblem(targetDir);
+  if (problem) {
+    console.error(`\n${problem}`);
+    process.exit(1);
+  }
+
+  printSuccess(runners, answers.testDir);
+}
+
+main().catch((error) => {
+  if (error instanceof UserFacingError) {
+    console.error(`Error: ${error.message}`);
+  } else {
+    console.error(error);
+  }
+  process.exit(1);
+});
