@@ -78,8 +78,10 @@ export function findIosAppBundleId(pbxproj: string): string | undefined {
     const usable = configurationIds
       .map((id) => readBuildConfiguration(pbxproj, id))
       .filter((config) => config.bundleId !== undefined && !isUnresolvedBuildSetting(config.bundleId));
-    const release = usable.find((config) => config.name === "Release");
-    const chosen = release ?? usable[0];
+    const defaultName = unquote(listBody.match(/defaultConfigurationName = ([^;]+);/)?.[1] ?? "");
+    const chosen = usable.find((config) => config.name === "Release")
+      ?? usable.find((config) => config.name === defaultName)
+      ?? usable[0];
     if (chosen?.bundleId) return chosen.bundleId;
   }
   return undefined;

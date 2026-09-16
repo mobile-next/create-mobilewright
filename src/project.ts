@@ -32,6 +32,10 @@ export const TYPESCRIPT_VERSION = "^5.9.3";
 export const DEFAULT_TEST_DIR = "tests";
 export const ISOLATED_TEST_DIR = "mobile-tests";
 
+// odd releases don't always get their own @types/node major (there is no @types/node 23)
+// ponytail: static list, add new majors as they are published; newer node falls back to the newest known
+const PUBLISHED_TYPES_NODE_MAJORS = [22, 24, 25, 26];
+
 const NPM_PLACEHOLDER_TEST_SCRIPT = "no test specified";
 const MOBILEWRIGHT_TEST_SCRIPT = "mobilewright test";
 
@@ -108,11 +112,16 @@ function withTestScript(pkg: PackageJson): PackageJson {
   return { ...pkg, scripts: { ...(pkg.scripts ?? {}), test: MOBILEWRIGHT_TEST_SCRIPT } };
 }
 
+export function typesNodeRange(nodeVersion: string): string {
+  const nodeMajor = Number(nodeVersion.replace(/^v/, "").split(".")[0]);
+  const candidates = PUBLISHED_TYPES_NODE_MAJORS.filter((major) => major <= nodeMajor);
+  return `^${candidates.length > 0 ? Math.max(...candidates) : PUBLISHED_TYPES_NODE_MAJORS[0]}`;
+}
+
 export function updatePackageJson(pkg: PackageJson, language: Language, nodeVersion: string): PackageJson {
-  const nodeMajor = nodeVersion.replace(/^v/, "").split(".")[0];
   const withMobilewright = addDevDependency(addDevDependency(pkg, "@mobilewright/test", MOBILEWRIGHT_VERSION), "mobilewright", MOBILEWRIGHT_VERSION);
   const withTypes = language === "ts"
-    ? addDevDependencyIfMissing(addDevDependencyIfMissing(withMobilewright, "@types/node", `^${nodeMajor}`), "typescript", TYPESCRIPT_VERSION)
+    ? addDevDependencyIfMissing(addDevDependencyIfMissing(withMobilewright, "@types/node", typesNodeRange(nodeVersion)), "typescript", TYPESCRIPT_VERSION)
     : withMobilewright;
   return withTestScript(withTypes);
 }
@@ -120,6 +129,22 @@ export function updatePackageJson(pkg: PackageJson, language: Language, nodeVers
 // JSON.stringify gives a valid JS string literal for any user input
 function literal(value: string): string {
   return JSON.stringify(value);
+}
+
+export function validateTestDir(targetDir: string, input: string): true | string {
+  const value = input.trim();
+  if (value === "") return "Please enter a directory name";
+  const relative = path.relative(targetDir, path.resolve(targetDir, value));
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    return "The test directory must be inside the current project";
+  }
+  return true;
+}
+
+// "./tests/", "/abs/project/tests" and "tests" all become "tests"
+export function normalizeTestDir(targetDir: string, input: string): string {
+  const relative = path.relative(targetDir, path.resolve(targetDir, input.trim())) || ".";
+  return relative.split(path.sep).join("/");
 }
 
 export function createConfigContent({ language, testDir, platform, bundleId }: ProjectFiles): string {

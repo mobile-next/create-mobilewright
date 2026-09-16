@@ -12,11 +12,14 @@ import {
   isSupportedNodeVersion,
   ISOLATED_TEST_DIR,
   MOBILEWRIGHT_VERSION,
+  normalizeTestDir,
   PackageJson,
   patchGitignore,
   readPackageJson,
+  typesNodeRange,
   updatePackageJson,
   UserFacingError,
+  validateTestDir,
 } from "../src/project";
 import { createTempDir, installFakePackage, writeFile } from "./helpers";
 
@@ -118,6 +121,14 @@ test("dependencies: TypeScript projects get typescript and @types/node matching 
   const result = scaffoldedPackageJson({});
   assert.equal(result.devDependencies?.["@types/node"], "^24");
   assert.ok(result.devDependencies?.typescript);
+});
+
+test("dependencies: @types/node uses a published major (there is no @types/node 23)", () => {
+  assert.equal(typesNodeRange("22.12.0"), "^22");
+  assert.equal(typesNodeRange("23.11.1"), "^22");
+  assert.equal(typesNodeRange("24.21.0"), "^24");
+  assert.equal(typesNodeRange("25.8.1"), "^25");
+  assert.equal(typesNodeRange("v27.0.0"), "^26");
 });
 
 test("dependencies: JavaScript projects don't get TypeScript packages", () => {
@@ -223,4 +234,22 @@ test("install check: reports two Playwright copies caused by the project's own p
 
   assert.match(problem, /Two different copies of Playwright/);
   assert.match(problem, /separate subdirectory/);
+});
+
+test("test dir: paths that escape the project are rejected", () => {
+  const project = createTempDir();
+  for (const input of ["../outside", "tests/../../outside", "/elsewhere/tests", ".."]) {
+    assert.equal(validateTestDir(project, input), "The test directory must be inside the current project", input);
+  }
+  assert.equal(validateTestDir(project, "   "), "Please enter a directory name");
+});
+
+test("test dir: nested, dotted and absolute paths inside the project are accepted and normalized", () => {
+  const project = createTempDir();
+  for (const input of ["tests", "tests/e2e", "./tests/", path.join(project, "tests"), "..tests"]) {
+    assert.equal(validateTestDir(project, input), true, input);
+  }
+  assert.equal(normalizeTestDir(project, "./tests/"), "tests");
+  assert.equal(normalizeTestDir(project, path.join(project, "mobile", "e2e")), "mobile/e2e");
+  assert.equal(normalizeTestDir(project, " tests/e2e "), "tests/e2e");
 });

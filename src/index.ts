@@ -18,11 +18,13 @@ import {
   isSupportedNodeVersion,
   Language,
   MINIMUM_NODE_VERSION,
+  normalizeTestDir,
   patchGitignore,
   readPackageJson,
   TestRunner,
   updatePackageJson,
   UserFacingError,
+  validateTestDir,
 } from "./project";
 
 type Answers = {
@@ -46,7 +48,7 @@ function findDetectedApp(apps: DetectedApp[], platform: Platform): DetectedApp |
   return apps.find((app) => app.platform === platform);
 }
 
-async function askQuestions(apps: DetectedApp[], defaultTestDir: string): Promise<Answers> {
+async function askQuestions(targetDir: string, apps: DetectedApp[], defaultTestDir: string): Promise<Answers> {
   const platforms: Platform[] = ["ios", "android"];
   const detectedPlatform = apps[0]?.platform ?? "ios";
 
@@ -88,8 +90,8 @@ async function askQuestions(apps: DetectedApp[], defaultTestDir: string): Promis
         name: "testDir",
         message: "Directory name for test files?",
         initial: defaultTestDir,
-        format: (value: string) => value.trim(),
-        validate: (value: string) => value.trim() !== "" || "Please enter a directory name",
+        format: (value: string) => normalizeTestDir(targetDir, value),
+        validate: (value: string) => validateTestDir(targetDir, value),
       },
     ],
     {
@@ -108,6 +110,8 @@ function writeFileIfMissing(filePath: string, content: string): void {
 
 function writeProjectFiles(targetDir: string, answers: Answers): void {
   const { language, testDir } = answers;
+  const validation = validateTestDir(targetDir, testDir);
+  if (validation !== true) throw new UserFacingError(validation);
   const pkgPath = path.join(targetDir, "package.json");
   const pkg = readPackageJson(pkgPath) ?? createNewPackageJson(targetDir);
   fs.writeFileSync(pkgPath, JSON.stringify(updatePackageJson(pkg, language, process.versions.node), null, 2) + "\n");
@@ -170,7 +174,7 @@ async function main() {
   const targetDir = process.cwd();
   const existingPkg = readPackageJson(path.join(targetDir, "package.json")) ?? {};
   const runners = detectOtherTestRunners(targetDir, existingPkg);
-  const answers = await askQuestions(detectApps(targetDir), chooseDefaultTestDir(targetDir, runners));
+  const answers = await askQuestions(targetDir, detectApps(targetDir), chooseDefaultTestDir(targetDir, runners));
 
   writeProjectFiles(targetDir, answers);
   runNpmInstall(targetDir);

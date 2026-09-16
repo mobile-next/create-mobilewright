@@ -5,6 +5,7 @@ export type XcodeTarget = {
   listId: string;
   name: string;
   productType: string;
+  defaultConfiguration: string;
   configurations: { id: string; name: string; bundleId: string }[];
 };
 
@@ -19,12 +20,13 @@ export function xcodeId(): string {
   return nextId.toString(16).toUpperCase().padStart(24, "0");
 }
 
-export function xcodeTarget(name: string, productType: string, bundleIds: Record<string, string>): XcodeTarget {
+export function xcodeTarget(name: string, productType: string, bundleIds: Record<string, string>, defaultConfiguration = "Release"): XcodeTarget {
   return {
     id: xcodeId(),
     listId: xcodeId(),
     name,
     productType,
+    defaultConfiguration,
     configurations: Object.entries(bundleIds).map(([configName, bundleId]) => ({ id: xcodeId(), name: configName, bundleId })),
   };
 }
@@ -62,7 +64,7 @@ export function pbxproj(targets: XcodeTarget[]): string {
 \t\t\tbuildConfigurations = (
 ${target.configurations.map((config) => `\t\t\t\t${config.id} /* ${config.name} */,`).join("\n")}
 \t\t\t);
-\t\t\tdefaultConfigurationName = Release;
+\t\t\tdefaultConfigurationName = ${target.defaultConfiguration};
 \t\t};`);
 
   return `// !$*UTF8*$!

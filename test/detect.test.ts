@@ -40,6 +40,11 @@ test("ios: prefers the Release configuration over a Debug suffix", () => {
   assert.equal(findIosAppBundleId(project), "com.acme.myapp");
 });
 
+test("ios: without a Release configuration, uses the project's declared default configuration", () => {
+  const project = pbxproj([xcodeTarget("MyApp", APPLICATION, { Debug: "com.acme.myapp.debug", Staging: "com.acme.myapp.staging" }, "Staging")]);
+  assert.equal(findIosAppBundleId(project), "com.acme.myapp.staging");
+});
+
 test("ios: never suggests unresolved build settings like $(PRODUCT_NAME:rfc1034identifier)", () => {
   const project = pbxproj([
     xcodeTarget("MyApp", APPLICATION, { Debug: "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)", Release: "${BUNDLE_PREFIX}.myapp" }),
