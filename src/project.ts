@@ -25,7 +25,8 @@ export type TestRunner = "playwright" | "jest" | "vitest";
 
 export class UserFacingError extends Error {}
 
-export const MINIMUM_NODE_MAJOR = 24;
+// mobilewright's own engines field; also the first 22.x with unflagged require(esm)
+export const MINIMUM_NODE_VERSION = "22.12.0";
 export const MOBILEWRIGHT_VERSION = "0.0.58";
 export const TYPESCRIPT_VERSION = "^5.9.3";
 export const DEFAULT_TEST_DIR = "tests";
@@ -35,8 +36,9 @@ const NPM_PLACEHOLDER_TEST_SCRIPT = "no test specified";
 const MOBILEWRIGHT_TEST_SCRIPT = "mobilewright test";
 
 export function isSupportedNodeVersion(version: string): boolean {
-  const major = Number(version.replace(/^v/, "").split(".")[0]);
-  return major >= MINIMUM_NODE_MAJOR;
+  const [major, minor] = version.replace(/^v/, "").split(".").map(Number);
+  const [minimumMajor, minimumMinor] = MINIMUM_NODE_VERSION.split(".").map(Number);
+  return major > minimumMajor || (major === minimumMajor && minor >= minimumMinor);
 }
 
 export function readPackageJson(pkgPath: string): PackageJson | undefined {

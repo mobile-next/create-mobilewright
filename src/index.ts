@@ -17,7 +17,7 @@ import {
   findInstallProblem,
   isSupportedNodeVersion,
   Language,
-  MINIMUM_NODE_MAJOR,
+  MINIMUM_NODE_VERSION,
   patchGitignore,
   readPackageJson,
   TestRunner,
@@ -37,8 +37,8 @@ const CANCELLED_EXIT_CODE = 130;
 function exitIfNodeIsUnsupported(): void {
   const version = process.versions.node;
   if (isSupportedNodeVersion(version)) return;
-  console.error(`mobilewright requires Node.js ${MINIMUM_NODE_MAJOR} or newer (you have ${version}).`);
-  console.error(`Upgrade Node.js (for example: nvm install ${MINIMUM_NODE_MAJOR}) and run npm init mobilewright@latest again.`);
+  console.error(`mobilewright requires Node.js ${MINIMUM_NODE_VERSION} or newer (you have ${version}).`);
+  console.error("Upgrade Node.js (for example: nvm install 24) and run npm init mobilewright@latest again.");
   process.exit(1);
 }
 

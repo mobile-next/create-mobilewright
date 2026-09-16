@@ -40,11 +40,11 @@ function installMobilewrightWithOnePlaywright(projectDir: string): void {
   installFakePackage(projectDir, { name: "@mobilewright/test", version: MOBILEWRIGHT_VERSION, exports: { ".": "./dist/index.js" } });
 }
 
-test("node versions older than 24 are rejected before any prompt", () => {
-  for (const version of ["16.20.2", "18.20.8", "20.19.0", "22.19.0", "23.11.1"]) {
+test("node versions older than 22.12 are rejected before any prompt", () => {
+  for (const version of ["16.20.2", "18.20.8", "20.19.0", "21.7.3", "22.11.0"]) {
     assert.equal(isSupportedNodeVersion(version), false, version);
   }
-  for (const version of ["24.0.0", "24.21.0", "25.8.1", "v26.0.0"]) {
+  for (const version of ["22.12.0", "22.19.0", "23.11.1", "24.21.0", "25.8.1", "v26.0.0"]) {
     assert.equal(isSupportedNodeVersion(version), true, version);
   }
 });
