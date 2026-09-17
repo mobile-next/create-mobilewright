@@ -109,9 +109,23 @@ test("install: a package already in dependencies stays in dependencies", () => {
   assert.deepEqual(plan, { dependencies: ["mobilewright@latest"], devDependencies: ["@mobilewright/test@latest"] });
 });
 
-test("install: workspace, file and git specs are never replaced", () => {
-  const pkg = { devDependencies: { mobilewright: "workspace:*", "@mobilewright/test": "file:../mobilewright/packages/test" } };
-  assert.deepEqual(planInstall(pkg, "js", "24.21.0"), { dependencies: [], devDependencies: [] });
+test("install: local, git and aliased specs are never replaced", () => {
+  const customBuilds = [
+    "workspace:*", "file:../mobilewright/packages/test", "link:../mobilewright", "portal:../mobilewright",
+    "git+ssh://git@github.com/mobile-next/mobilewright.git", "git@github.com:mobile-next/mobilewright.git",
+    "github:mobile-next/mobilewright", "gitlab:mobile-next/mobilewright", "bitbucket:mobile-next/mobilewright",
+    "gist:11081aaa281", "mobile-next/mobilewright#main", "../mobilewright", "https://example.com/mobilewright.tgz",
+    "npm:mobilewright-fork@1.0.0",
+  ];
+  for (const spec of customBuilds) {
+    assert.deepEqual(planInstall({ devDependencies: { mobilewright: spec } }, "js", "24.21.0").devDependencies, ["@mobilewright/test@latest"], spec);
+  }
+});
+
+test("install: registry versions and tags are upgraded to the latest", () => {
+  for (const spec of ["", "latest", "next", "*", "0.0.45", "^0.0.45", "~1.2.3", ">=1.0.0 <2.0.0", "1.x || 2.x"]) {
+    assert.deepEqual(planInstall({ devDependencies: { mobilewright: spec } }, "js", "24.21.0").devDependencies, ["mobilewright@latest", "@mobilewright/test@latest"], spec);
+  }
 });
 
 test("install: existing @types/node and typescript are kept", () => {

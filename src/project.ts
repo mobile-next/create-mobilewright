@@ -40,8 +40,9 @@ export const ISOLATED_TEST_DIR = "mobile-tests";
 const PUBLISHED_TYPES_NODE_MAJORS = [22, 24, 25, 26];
 
 const MOBILEWRIGHT_PACKAGES = ["mobilewright", "@mobilewright/test"];
-// workspace:, file:, link:, git and url specs point at a local or custom build, never replace them
-const NON_REGISTRY_SPEC = /^(workspace:|file:|link:|portal:|git\+|git:|github:|https?:)/;
+// only a semver range or a dist-tag comes from the registry; anything with ":", "/" or "@"
+// (workspace:, file:, git urls, git@host:repo, owner/repo, ../path, npm: aliases) is a custom build, never replace it
+const REGISTRY_SPEC = /^[\w.^~<>=*|\s-]*$/;
 
 const NPM_PLACEHOLDER_TEST_SCRIPT = "no test specified";
 const MOBILEWRIGHT_TEST_SCRIPT = "mobilewright test";
@@ -101,7 +102,7 @@ export function typesNodeRange(nodeVersion: string): string {
 // like create-playwright, nothing is pinned here. @latest is explicit because a bare name
 // keeps whatever range package.json already has (e.g. ^0.0.45 would never be upgraded)
 export function planInstall(pkg: PackageJson, language: Language, nodeVersion: string): InstallPlan {
-  const isRegistrySpec = (spec: string | undefined) => spec === undefined || !NON_REGISTRY_SPEC.test(spec);
+  const isRegistrySpec = (spec: string | undefined) => spec === undefined || REGISTRY_SPEC.test(spec);
   const mobilewright = MOBILEWRIGHT_PACKAGES.filter((name) => isRegistrySpec(pkg.dependencies?.[name] ?? pkg.devDependencies?.[name]));
   const latest = (names: string[]) => names.map((name) => `${name}@latest`);
   const typescriptPackages = language === "ts"
