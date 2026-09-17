@@ -157,7 +157,8 @@ export function createConfigContent({ language, testDir, platform, bundleId }: P
     `  testDir: ${literal(`./${testDir}`)},`,
     `  platform: ${literal(platform)},`,
     ...(bundleId ? [`  bundleId: ${literal(bundleId)},`] : []),
-    "  reporter: 'html',",
+    // open: 'never': otherwise a failing run in a terminal serves the report and blocks until Ctrl-C
+    "  reporter: [['html', { open: 'never' }]],",
     "});",
     "",
   ];
@@ -200,6 +201,7 @@ export function patchGitignore(existing: string | undefined): string | undefined
     ["node_modules/", /^\/?node_modules\/?$/m],
     ["/test-results/", /^\/?test-results\/?$/m],
     ["/playwright-report/", /^\/?playwright-report\/?$/m],
+    ["/mobilewright-report/", /^\/?mobilewright-report\/?$/m],
   ];
   const missing = entries.filter(([, pattern]) => !pattern.test(existing ?? "")).map(([entry]) => entry);
   if (missing.length === 0) return undefined;

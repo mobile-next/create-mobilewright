@@ -5,7 +5,7 @@ Scaffold a [Mobilewright](https://mobilewright.dev) test project in seconds.
 ## Usage
 
 ```sh
-npm init mobilewright
+npm init mobilewright@latest
 ```
 
 Also works with Yarn (`yarn create mobilewright`) and pnpm (`pnpm create mobilewright`).
