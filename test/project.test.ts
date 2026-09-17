@@ -161,6 +161,10 @@ test("config: user input is escaped so it cannot break or inject code", () => {
   assert.match(config, /bundleId: "x'}\); require\('fs'\); \(\{a:'",/);
 });
 
+test("config: the HTML report never opens by itself, so a failing run doesn't block the terminal", () => {
+  assert.match(createConfigContent({ language: "ts", testDir: "tests", platform: "ios", bundleId: "" }), /reporter: \[\['html', \{ open: 'never' \}\]\],/);
+});
+
 test("config: bundleId is omitted when left empty", () => {
   assert.doesNotMatch(createConfigContent({ language: "ts", testDir: "tests", platform: "ios", bundleId: "" }), /bundleId/);
 });
@@ -177,15 +181,15 @@ test("tsconfig: loads node types and includes the config and test directory", ()
 });
 
 test("gitignore: created when missing", () => {
-  assert.equal(patchGitignore(undefined), "# mobilewright\nnode_modules/\n/test-results/\n/playwright-report/\n");
+  assert.equal(patchGitignore(undefined), "# mobilewright\nnode_modules/\n/test-results/\n/playwright-report/\n/mobilewright-report/\n");
 });
 
 test("gitignore: only missing entries are appended", () => {
-  assert.equal(patchGitignore("node_modules\n.env\n"), "node_modules\n.env\n\n# mobilewright\n/test-results/\n/playwright-report/\n");
+  assert.equal(patchGitignore("node_modules\n.env\n"), "node_modules\n.env\n\n# mobilewright\n/test-results/\n/playwright-report/\n/mobilewright-report/\n");
 });
 
 test("gitignore: nothing to do when every entry exists", () => {
-  assert.equal(patchGitignore("node_modules/\ntest-results/\n/playwright-report\n"), undefined);
+  assert.equal(patchGitignore("node_modules/\ntest-results/\n/playwright-report\nmobilewright-report/\n"), undefined);
 });
 
 test("test dir: plain projects use tests/", () => {
