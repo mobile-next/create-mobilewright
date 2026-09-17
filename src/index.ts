@@ -15,16 +15,18 @@ import {
   describeRunnerExclusion,
   detectOtherTestRunners,
   findInstallProblem,
+  installCommands,
   isSupportedNodeVersion,
   Language,
   MINIMUM_NODE_VERSION,
   normalizeTestDir,
   patchGitignore,
+  planInstall,
   readPackageJson,
   TestRunner,
-  updatePackageJson,
   UserFacingError,
   validateTestDir,
+  withTestScript,
 } from "./project";
 
 type Answers = {
@@ -108,13 +110,32 @@ function writeFileIfMissing(filePath: string, content: string): void {
   if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, content);
 }
 
+function writeJson(filePath: string, value: unknown): void {
+  fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + "\n");
+}
+
+// same order as create-playwright: package.json and install first, so a failed
+// install leaves no half-scaffolded project behind
+function installDependencies(targetDir: string, language: Language): void {
+  const pkgPath = path.join(targetDir, "package.json");
+  const existing = readPackageJson(pkgPath);
+  // a blank package.json would make npm fail with EJSONPARSE
+  if (existing === undefined || Object.keys(existing).length === 0) writeJson(pkgPath, createNewPackageJson(targetDir));
+
+  console.log("\nInstalling dependencies...\n");
+  for (const command of installCommands(planInstall(existing ?? {}, language, process.versions.node))) {
+    console.log(`${command}\n`);
+    try {
+      execSync(command, { cwd: targetDir, stdio: "inherit" });
+    } catch {
+      console.error("\nFailed to install dependencies. No test files were created; fix the error above and run npm init mobilewright@latest again.");
+      process.exit(1);
+    }
+  }
+}
+
 function writeProjectFiles(targetDir: string, answers: Answers): void {
   const { language, testDir } = answers;
-  const validation = validateTestDir(targetDir, testDir);
-  if (validation !== true) throw new UserFacingError(validation);
-  const pkgPath = path.join(targetDir, "package.json");
-  const pkg = readPackageJson(pkgPath) ?? createNewPackageJson(targetDir);
-  fs.writeFileSync(pkgPath, JSON.stringify(updatePackageJson(pkg, language, process.versions.node), null, 2) + "\n");
 
   fs.writeFileSync(path.join(targetDir, `mobilewright.config.${language}`), createConfigContent(answers));
 
@@ -129,21 +150,10 @@ function writeProjectFiles(targetDir: string, answers: Answers): void {
   const gitignorePath = path.join(targetDir, ".gitignore");
   const gitignore = patchGitignore(fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf-8") : undefined);
   if (gitignore !== undefined) fs.writeFileSync(gitignorePath, gitignore);
-}
 
-function runNpmInstall(targetDir: string): void {
-  console.log("\nInstalling dependencies...\n");
-
-  try {
-    // --include=dev: otherwise NODE_ENV=production silently skips every devDependency
-    execSync("npm install --include=dev", {
-      cwd: targetDir,
-      stdio: "inherit",
-    });
-  } catch {
-    console.error("Failed to install dependencies.");
-    process.exit(1);
-  }
+  // re-read: npm rewrote package.json while installing
+  const pkgPath = path.join(targetDir, "package.json");
+  writeJson(pkgPath, withTestScript(readPackageJson(pkgPath) ?? {}));
 }
 
 function printSuccess(runners: TestRunner[], testDir: string): void {
@@ -176,8 +186,11 @@ async function main() {
   const runners = detectOtherTestRunners(targetDir, existingPkg);
   const answers = await askQuestions(targetDir, detectApps(targetDir), chooseDefaultTestDir(targetDir, runners));
 
+  const validation = validateTestDir(targetDir, answers.testDir);
+  if (validation !== true) throw new UserFacingError(validation);
+
+  installDependencies(targetDir, answers.language);
   writeProjectFiles(targetDir, answers);
-  runNpmInstall(targetDir);
 
   const problem = findInstallProblem(targetDir);
   if (problem) {
