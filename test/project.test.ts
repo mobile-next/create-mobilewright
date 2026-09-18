@@ -142,14 +142,14 @@ test("dependencies: @types/node uses a published major (there is no @types/node 
 });
 
 test("install: commands quote every spec and never use a pinned mobilewright version", () => {
-  assert.deepEqual(installCommands({ dependencies: ["mobilewright"], devDependencies: ["@mobilewright/test", "@types/node@^24"] }), [
+  assert.deepEqual(installCommands({ dependencies: ["mobilewright"], devDependencies: ["@mobilewright/test", "@types/node@^24"] }, "npm"), [
     'npm install --save-dev --include=dev "@mobilewright/test" "@types/node@^24"',
     'npm install --save-prod --include=dev "mobilewright"',
   ]);
 });
 
 test("install: nothing to add still runs npm install so existing dependencies are present", () => {
-  assert.deepEqual(installCommands({ dependencies: [], devDependencies: [] }), ["npm install --include=dev"]);
+  assert.deepEqual(installCommands({ dependencies: [], devDependencies: [] }, "pnpm"), ["pnpm install"]);
 });
 
 test("install: the input package.json object is not mutated", () => {
