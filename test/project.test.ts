@@ -11,15 +11,16 @@ import {
   findInstallProblem,
   isSupportedNodeVersion,
   ISOLATED_TEST_DIR,
-  MOBILEWRIGHT_VERSION,
+  installCommands,
   normalizeTestDir,
   PackageJson,
   patchGitignore,
   readPackageJson,
+  planInstall,
   typesNodeRange,
-  updatePackageJson,
   UserFacingError,
   validateTestDir,
+  withTestScript,
 } from "../src/project";
 import { createTempDir, installFakePackage, writeFile } from "./helpers";
 
@@ -31,16 +32,18 @@ function assertRejectedWithMessage(pkgPath: string, message: RegExp): void {
   assert.throws(() => readPackageJson(pkgPath), (error: unknown) => error instanceof UserFacingError && message.test(error.message));
 }
 
-function scaffoldedPackageJson(pkg: PackageJson): PackageJson {
-  return updatePackageJson(pkg, "ts", "24.21.0");
+const ANY_MOBILEWRIGHT_VERSION = "0.0.59";
+
+function typescriptInstallFor(pkg: PackageJson) {
+  return planInstall(pkg, "ts", "24.21.0");
 }
 
 function installMobilewrightWithOnePlaywright(projectDir: string): void {
   installFakePackage(projectDir, { name: "playwright", version: "1.63.0" });
   installFakePackage(projectDir, { name: "@playwright/test", version: "1.63.0" });
   // like the real packages, "exports" hides ./package.json from require.resolve
-  installFakePackage(projectDir, { name: "mobilewright", version: MOBILEWRIGHT_VERSION, exports: { ".": "./dist/index.js" } });
-  installFakePackage(projectDir, { name: "@mobilewright/test", version: MOBILEWRIGHT_VERSION, exports: { ".": "./dist/index.js" } });
+  installFakePackage(projectDir, { name: "mobilewright", version: ANY_MOBILEWRIGHT_VERSION, exports: { ".": "./dist/index.js" } });
+  installFakePackage(projectDir, { name: "@mobilewright/test", version: ANY_MOBILEWRIGHT_VERSION, exports: { ".": "./dist/index.js" } });
 }
 
 test("node versions older than 22.12 are rejected before any prompt", () => {
@@ -80,47 +83,54 @@ test("new package.json gets a valid name and is private", () => {
 });
 
 test("new package.json gets a test script", () => {
-  assert.equal(scaffoldedPackageJson(createNewPackageJson("/work/app")).scripts?.test, "mobilewright test");
+  assert.equal(withTestScript(createNewPackageJson("/work/app")).scripts?.test, "mobilewright test");
 });
 
 test("npm's placeholder test script is replaced, a real one is kept", () => {
   const placeholder = { scripts: { test: 'echo "Error: no test specified" && exit 1' } };
-  assert.equal(scaffoldedPackageJson(placeholder).scripts?.test, "mobilewright test");
-  assert.equal(scaffoldedPackageJson({ scripts: { test: "jest" } }).scripts?.test, "jest");
+  assert.equal(withTestScript(placeholder).scripts?.test, "mobilewright test");
+  assert.equal(withTestScript({ scripts: { test: "jest" } }).scripts?.test, "jest");
 });
 
-test("dependencies: a newer mobilewright is never downgraded", () => {
-  const result = scaffoldedPackageJson({ devDependencies: { mobilewright: "99.0.0", "@mobilewright/test": "^99.1.0" } });
-  assert.equal(result.devDependencies?.mobilewright, "99.0.0");
-  assert.equal(result.devDependencies?.["@mobilewright/test"], "^99.1.0");
+test("install: mobilewright is installed @latest, never a pinned version", () => {
+  assert.deepEqual(planInstall({}, "js", "24.21.0"), { dependencies: [], devDependencies: ["mobilewright@latest", "@mobilewright/test@latest"] });
 });
 
-test("dependencies: an older mobilewright is upgraded", () => {
-  assert.equal(scaffoldedPackageJson({ devDependencies: { mobilewright: "^0.0.45" } }).devDependencies?.mobilewright, MOBILEWRIGHT_VERSION);
+test("install: TypeScript projects also get typescript and @types/node for the running node", () => {
+  assert.deepEqual(typescriptInstallFor({}).devDependencies, ["mobilewright@latest", "@mobilewright/test@latest", "@types/node@^24", "typescript"]);
 });
 
-test("dependencies: non-semver specs like workspace:* or latest are left alone", () => {
-  const result = scaffoldedPackageJson({ devDependencies: { mobilewright: "workspace:*", "@mobilewright/test": "latest" } });
-  assert.equal(result.devDependencies?.mobilewright, "workspace:*");
-  assert.equal(result.devDependencies?.["@mobilewright/test"], "latest");
+test("install: an older mobilewright in devDependencies is upgraded to the latest", () => {
+  assert.deepEqual(planInstall({ devDependencies: { mobilewright: "^0.0.45" } }, "js", "24.21.0").devDependencies, ["mobilewright@latest", "@mobilewright/test@latest"]);
 });
 
-test("dependencies: a package already in dependencies is not duplicated into devDependencies", () => {
-  const result = scaffoldedPackageJson({ dependencies: { mobilewright: "0.0.45" } });
-  assert.equal(result.dependencies?.mobilewright, MOBILEWRIGHT_VERSION);
-  assert.equal(result.devDependencies?.mobilewright, undefined);
+test("install: a package already in dependencies stays in dependencies", () => {
+  const plan = planInstall({ dependencies: { mobilewright: "0.0.45" } }, "js", "24.21.0");
+  assert.deepEqual(plan, { dependencies: ["mobilewright@latest"], devDependencies: ["@mobilewright/test@latest"] });
 });
 
-test("dependencies: existing @types/node and typescript ranges are kept", () => {
-  const result = scaffoldedPackageJson({ devDependencies: { "@types/node": "^22.0.0", typescript: "^4.9.5" } });
-  assert.equal(result.devDependencies?.["@types/node"], "^22.0.0");
-  assert.equal(result.devDependencies?.typescript, "^4.9.5");
+test("install: local, git and aliased specs are never replaced", () => {
+  const customBuilds = [
+    "workspace:*", "file:../mobilewright/packages/test", "link:../mobilewright", "portal:../mobilewright",
+    "git+ssh://git@github.com/mobile-next/mobilewright.git", "git@github.com:mobile-next/mobilewright.git",
+    "github:mobile-next/mobilewright", "gitlab:mobile-next/mobilewright", "bitbucket:mobile-next/mobilewright",
+    "gist:11081aaa281", "mobile-next/mobilewright#main", "../mobilewright", "https://example.com/mobilewright.tgz",
+    "npm:mobilewright-fork@1.0.0",
+  ];
+  for (const spec of customBuilds) {
+    assert.deepEqual(planInstall({ devDependencies: { mobilewright: spec } }, "js", "24.21.0").devDependencies, ["@mobilewright/test@latest"], spec);
+  }
 });
 
-test("dependencies: TypeScript projects get typescript and @types/node matching the running node major", () => {
-  const result = scaffoldedPackageJson({});
-  assert.equal(result.devDependencies?.["@types/node"], "^24");
-  assert.ok(result.devDependencies?.typescript);
+test("install: registry versions and tags are upgraded to the latest", () => {
+  for (const spec of ["", "latest", "next", "*", "0.0.45", "^0.0.45", "~1.2.3", ">=1.0.0 <2.0.0", "1.x || 2.x"]) {
+    assert.deepEqual(planInstall({ devDependencies: { mobilewright: spec } }, "js", "24.21.0").devDependencies, ["mobilewright@latest", "@mobilewright/test@latest"], spec);
+  }
+});
+
+test("install: existing @types/node and typescript are kept", () => {
+  const plan = typescriptInstallFor({ devDependencies: { "@types/node": "^22.0.0", typescript: "^4.9.5" } });
+  assert.deepEqual(plan.devDependencies, ["mobilewright@latest", "@mobilewright/test@latest"]);
 });
 
 test("dependencies: @types/node uses a published major (there is no @types/node 23)", () => {
@@ -131,16 +141,22 @@ test("dependencies: @types/node uses a published major (there is no @types/node 
   assert.equal(typesNodeRange("v27.0.0"), "^26");
 });
 
-test("dependencies: JavaScript projects don't get TypeScript packages", () => {
-  const result = updatePackageJson({}, "js", "24.21.0");
-  assert.equal(result.devDependencies?.typescript, undefined);
-  assert.equal(result.devDependencies?.["@types/node"], undefined);
+test("install: commands quote every spec and never use a pinned mobilewright version", () => {
+  assert.deepEqual(installCommands({ dependencies: ["mobilewright"], devDependencies: ["@mobilewright/test", "@types/node@^24"] }), [
+    'npm install --save-dev --include=dev "@mobilewright/test" "@types/node@^24"',
+    'npm install --save-prod --include=dev "mobilewright"',
+  ]);
 });
 
-test("dependencies: the input package.json object is not mutated", () => {
-  const pkg: PackageJson = { devDependencies: { other: "1.0.0" } };
-  scaffoldedPackageJson(pkg);
-  assert.deepEqual(pkg, { devDependencies: { other: "1.0.0" } });
+test("install: nothing to add still runs npm install so existing dependencies are present", () => {
+  assert.deepEqual(installCommands({ dependencies: [], devDependencies: [] }), ["npm install --include=dev"]);
+});
+
+test("install: the input package.json object is not mutated", () => {
+  const pkg: PackageJson = { devDependencies: { other: "1.0.0" }, scripts: { test: "echo no test specified" } };
+  planInstall(pkg, "ts", "24.21.0");
+  withTestScript(pkg);
+  assert.deepEqual(pkg, { devDependencies: { other: "1.0.0" }, scripts: { test: "echo no test specified" } });
 });
 
 test("config: always sets the platform", () => {
@@ -228,9 +244,9 @@ test("install check: reports two Playwright copies caused by the project's own p
   const dir = createTempDir();
   installFakePackage(dir, { name: "playwright", version: "1.45.3" });
   installFakePackage(dir, { name: "@playwright/test", version: "1.45.3" });
-  const mobilewright = installFakePackage(dir, { name: "mobilewright", version: MOBILEWRIGHT_VERSION });
+  const mobilewright = installFakePackage(dir, { name: "mobilewright", version: ANY_MOBILEWRIGHT_VERSION });
   installFakePackage(mobilewright, { name: "playwright", version: "1.63.0" });
-  const mobilewrightTest = installFakePackage(dir, { name: "@mobilewright/test", version: MOBILEWRIGHT_VERSION });
+  const mobilewrightTest = installFakePackage(dir, { name: "@mobilewright/test", version: ANY_MOBILEWRIGHT_VERSION });
   const nestedPlaywrightTest = installFakePackage(mobilewrightTest, { name: "@playwright/test", version: "1.63.0" });
   installFakePackage(nestedPlaywrightTest, { name: "playwright", version: "1.63.0" });
 

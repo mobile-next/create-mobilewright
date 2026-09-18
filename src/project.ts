@@ -23,18 +23,26 @@ export type ProjectFiles = {
 
 export type TestRunner = "playwright" | "jest" | "vitest";
 
+export type InstallPlan = {
+  dependencies: string[];
+  devDependencies: string[];
+};
+
 export class UserFacingError extends Error {}
 
 // mobilewright's own engines field; also the first 22.x with unflagged require(esm)
 export const MINIMUM_NODE_VERSION = "22.12.0";
-export const MOBILEWRIGHT_VERSION = "0.0.58";
-export const TYPESCRIPT_VERSION = "^5.9.3";
 export const DEFAULT_TEST_DIR = "tests";
 export const ISOLATED_TEST_DIR = "mobile-tests";
 
 // odd releases don't always get their own @types/node major (there is no @types/node 23)
 // ponytail: static list, add new majors as they are published; newer node falls back to the newest known
 const PUBLISHED_TYPES_NODE_MAJORS = [22, 24, 25, 26];
+
+const MOBILEWRIGHT_PACKAGES = ["mobilewright", "@mobilewright/test"];
+// only a semver range or a dist-tag comes from the registry; anything with ":", "/" or "@"
+// (workspace:, file:, git urls, git@host:repo, owner/repo, ../path, npm: aliases) is a custom build, never replace it
+const REGISTRY_SPEC = /^[\w.^~<>=*|\s-]*$/;
 
 const NPM_PLACEHOLDER_TEST_SCRIPT = "no test specified";
 const MOBILEWRIGHT_TEST_SCRIPT = "mobilewright test";
@@ -75,38 +83,11 @@ export function createNewPackageJson(targetDir: string): PackageJson {
   };
 }
 
-function parseVersion(spec: string): number[] | undefined {
-  const match = spec.match(/^[\^~>=v\s]*(\d+)\.(\d+)\.(\d+)/);
-  return match ? match.slice(1, 4).map(Number) : undefined;
-}
-
-function isOlderVersion(existingSpec: string, version: string): boolean {
-  const existing = parseVersion(existingSpec);
-  const wanted = parseVersion(version);
-  // non-semver specs (latest, file:, workspace:, git urls) are a deliberate user choice
-  if (!existing || !wanted) return false;
-  for (let i = 0; i < 3; i++) {
-    if (existing[i] !== wanted[i]) return existing[i] < wanted[i];
-  }
-  return false;
-}
-
-export function addDevDependency(pkg: PackageJson, name: string, version: string): PackageJson {
-  const field = pkg.dependencies?.[name] !== undefined ? "dependencies" : "devDependencies";
-  const existing = pkg[field]?.[name];
-  if (existing !== undefined && !isOlderVersion(existing, version)) return pkg;
-  return { ...pkg, [field]: { ...(pkg[field] ?? {}), [name]: version } };
-}
-
 function hasDependency(pkg: PackageJson, name: string): boolean {
   return pkg.dependencies?.[name] !== undefined || pkg.devDependencies?.[name] !== undefined;
 }
 
-function addDevDependencyIfMissing(pkg: PackageJson, name: string, version: string): PackageJson {
-  return hasDependency(pkg, name) ? pkg : addDevDependency(pkg, name, version);
-}
-
-function withTestScript(pkg: PackageJson): PackageJson {
+export function withTestScript(pkg: PackageJson): PackageJson {
   const current = pkg.scripts?.test;
   if (current !== undefined && !current.includes(NPM_PLACEHOLDER_TEST_SCRIPT)) return pkg;
   return { ...pkg, scripts: { ...(pkg.scripts ?? {}), test: MOBILEWRIGHT_TEST_SCRIPT } };
@@ -118,12 +99,33 @@ export function typesNodeRange(nodeVersion: string): string {
   return `^${candidates.length > 0 ? Math.max(...candidates) : PUBLISHED_TYPES_NODE_MAJORS[0]}`;
 }
 
-export function updatePackageJson(pkg: PackageJson, language: Language, nodeVersion: string): PackageJson {
-  const withMobilewright = addDevDependency(addDevDependency(pkg, "@mobilewright/test", MOBILEWRIGHT_VERSION), "mobilewright", MOBILEWRIGHT_VERSION);
-  const withTypes = language === "ts"
-    ? addDevDependencyIfMissing(addDevDependencyIfMissing(withMobilewright, "@types/node", typesNodeRange(nodeVersion)), "typescript", TYPESCRIPT_VERSION)
-    : withMobilewright;
-  return withTestScript(withTypes);
+// like create-playwright, nothing is pinned here. @latest is explicit because a bare name
+// keeps whatever range package.json already has (e.g. ^0.0.45 would never be upgraded)
+export function planInstall(pkg: PackageJson, language: Language, nodeVersion: string): InstallPlan {
+  const isRegistrySpec = (spec: string | undefined) => spec === undefined || REGISTRY_SPEC.test(spec);
+  const mobilewright = MOBILEWRIGHT_PACKAGES.filter((name) => isRegistrySpec(pkg.dependencies?.[name] ?? pkg.devDependencies?.[name]));
+  const latest = (names: string[]) => names.map((name) => `${name}@latest`);
+  const typescriptPackages = language === "ts"
+    ? [
+      ...(hasDependency(pkg, "@types/node") ? [] : [`@types/node@${typesNodeRange(nodeVersion)}`]),
+      ...(hasDependency(pkg, "typescript") ? [] : ["typescript"]),
+    ]
+    : [];
+  return {
+    // a package the project already lists under dependencies stays there
+    dependencies: latest(mobilewright.filter((name) => pkg.dependencies?.[name] !== undefined)),
+    devDependencies: [...latest(mobilewright.filter((name) => pkg.dependencies?.[name] === undefined)), ...typescriptPackages],
+  };
+}
+
+export function installCommands({ dependencies, devDependencies }: InstallPlan): string[] {
+  // --include=dev: otherwise NODE_ENV=production silently skips devDependencies
+  const quoted = (specs: string[]) => specs.map((spec) => `"${spec}"`).join(" ");
+  const commands = [
+    ...(devDependencies.length > 0 ? [`npm install --save-dev --include=dev ${quoted(devDependencies)}`] : []),
+    ...(dependencies.length > 0 ? [`npm install --save-prod --include=dev ${quoted(dependencies)}`] : []),
+  ];
+  return commands.length > 0 ? commands : ["npm install --include=dev"];
 }
 
 // JSON.stringify gives a valid JS string literal for any user input
