@@ -6,6 +6,7 @@ import path from "path";
 import prompts from "prompts";
 import { execSync } from "child_process";
 import { detectApps, DetectedApp, Platform } from "./detect";
+import { createProjectCommand, detectPackageManager, isWorkspaceRoot, PackageManager, runCommand } from "./package-manager";
 import {
   chooseDefaultTestDir,
   createConfigContent,
@@ -116,19 +117,20 @@ function writeJson(filePath: string, value: unknown): void {
 
 // same order as create-playwright: package.json and install first, so a failed
 // install leaves no half-scaffolded project behind
-function installDependencies(targetDir: string, language: Language): void {
+function installDependencies(targetDir: string, language: Language, packageManager: PackageManager): void {
   const pkgPath = path.join(targetDir, "package.json");
   const existing = readPackageJson(pkgPath);
-  // a blank package.json would make npm fail with EJSONPARSE
+  // a blank package.json would make the package manager fail on a parse error
   if (existing === undefined || Object.keys(existing).length === 0) writeJson(pkgPath, createNewPackageJson(targetDir));
 
   console.log("\nInstalling dependencies...\n");
-  for (const command of installCommands(planInstall(existing ?? {}, language, process.versions.node))) {
+  const plan = planInstall(existing ?? {}, language, process.versions.node);
+  for (const command of installCommands(plan, packageManager, isWorkspaceRoot(targetDir, existing?.workspaces))) {
     console.log(`${command}\n`);
     try {
       execSync(command, { cwd: targetDir, stdio: "inherit" });
     } catch {
-      console.error("\nFailed to install dependencies. No test files were created; fix the error above and run npm init mobilewright@latest again.");
+      console.error(`\nFailed to install dependencies. No test files were created; fix the error above and run ${createProjectCommand(packageManager)} again.`);
       process.exit(1);
     }
   }
@@ -156,12 +158,17 @@ function writeProjectFiles(targetDir: string, answers: Answers): void {
   writeJson(pkgPath, withTestScript(readPackageJson(pkgPath) ?? {}));
 }
 
-function printSuccess(runners: TestRunner[], testDir: string): void {
+function printSuccess(runners: TestRunner[], testDir: string, packageManager: PackageManager): void {
   console.log(`
 Success! Created mobilewright project.
 
 From this directory, you can run:
-  npx mobilewright test
+  ${runCommand(packageManager, "test")}
+    Runs your tests. Needs a booted simulator/emulator or a connected device.
+  ${runCommand(packageManager, "test --list")}
+    Lists the tests without running them.
+  ${runCommand(packageManager, "doctor")}
+    Checks your setup.
 
 Visit https://mobilewright.dev for more information.`);
 
@@ -184,12 +191,13 @@ async function main() {
   const targetDir = process.cwd();
   const existingPkg = readPackageJson(path.join(targetDir, "package.json")) ?? {};
   const runners = detectOtherTestRunners(targetDir, existingPkg);
+  const packageManager = detectPackageManager(targetDir, existingPkg.packageManager);
   const answers = await askQuestions(targetDir, detectApps(targetDir), chooseDefaultTestDir(targetDir, runners));
 
   const validation = validateTestDir(targetDir, answers.testDir);
   if (validation !== true) throw new UserFacingError(validation);
 
-  installDependencies(targetDir, answers.language);
+  installDependencies(targetDir, answers.language, packageManager);
   writeProjectFiles(targetDir, answers);
 
   const problem = findInstallProblem(targetDir);
@@ -198,7 +206,7 @@ async function main() {
     process.exit(1);
   }
 
-  printSuccess(runners, answers.testDir);
+  printSuccess(runners, answers.testDir, packageManager);
 }
 
 main().catch((error) => {

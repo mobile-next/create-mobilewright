@@ -8,7 +8,7 @@ Scaffold a [Mobilewright](https://mobilewright.dev) test project in seconds.
 npm init mobilewright@latest
 ```
 
-Also works with Yarn (`yarn create mobilewright`) and pnpm (`pnpm create mobilewright`).
+Also works with Yarn (`yarn create mobilewright`), pnpm (`pnpm create mobilewright`) and Bun (`bun create mobilewright`). The project's own package manager is detected from its lockfile, so dependencies are installed with the tool you already use.
 
 The CLI walks you through setup and creates a ready-to-run project:
 
@@ -40,7 +40,7 @@ If something's missing, `npx mobilewright doctor` tells you exactly what to fix.
 ## Next steps
 
 - [Mobilewright docs](https://mobilewright.dev/docs) — API reference and guides
-- [mobile-use.com](https://mobile-use.com) — Run tests on real devices in the cloud
+- [Mobile Next Cloud](https://mobilenext.ai/cloud?utm_source=github&utm_medium=readme&utm_campaign=create-mobilewright&utm_content=next-steps) — Run tests on real devices in the cloud
 
 ## License
 

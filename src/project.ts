@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { Platform } from "./detect";
+import { installAllCommand, installDevCommand, installProdCommand, PackageManager } from "./package-manager";
 
 export type Language = "ts" | "js";
 
@@ -11,6 +12,8 @@ export type PackageJson = {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   jest?: unknown;
+  workspaces?: unknown;
+  packageManager?: string;
   [key: string]: unknown;
 };
 
@@ -118,14 +121,12 @@ export function planInstall(pkg: PackageJson, language: Language, nodeVersion: s
   };
 }
 
-export function installCommands({ dependencies, devDependencies }: InstallPlan): string[] {
-  // --include=dev: otherwise NODE_ENV=production silently skips devDependencies
-  const quoted = (specs: string[]) => specs.map((spec) => `"${spec}"`).join(" ");
+export function installCommands({ dependencies, devDependencies }: InstallPlan, packageManager: PackageManager, isWorkspaceRoot = false): string[] {
   const commands = [
-    ...(devDependencies.length > 0 ? [`npm install --save-dev --include=dev ${quoted(devDependencies)}`] : []),
-    ...(dependencies.length > 0 ? [`npm install --save-prod --include=dev ${quoted(dependencies)}`] : []),
+    ...(devDependencies.length > 0 ? [installDevCommand(packageManager, devDependencies, isWorkspaceRoot)] : []),
+    ...(dependencies.length > 0 ? [installProdCommand(packageManager, dependencies, isWorkspaceRoot)] : []),
   ];
-  return commands.length > 0 ? commands : ["npm install --include=dev"];
+  return commands.length > 0 ? commands : [installAllCommand(packageManager)];
 }
 
 // JSON.stringify gives a valid JS string literal for any user input
