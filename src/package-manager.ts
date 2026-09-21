@@ -52,12 +52,14 @@ function resolveYarn(dir: string, version: string | undefined): PackageManager {
 
 /** A package inside a workspace has no lockfile of its own; the workspace root above it does. */
 function fromProject(dir: string, packageManagerField: string | undefined): PackageManager | undefined {
-  const lockfile = LOCKFILES.find((candidate) => fs.existsSync(path.join(dir, candidate.file)));
-  if (lockfile) return lockfile.packageManager === "yarn" ? resolveYarn(dir, undefined) : lockfile.packageManager;
-
   const declared = (packageManagerField ?? readPackageManagerField(dir))?.match(/^(npm|pnpm|yarn|bun)@?(\S+)?/);
+  const declaredYarnVersion = declared?.[1] === "yarn" ? declared[2] : undefined;
+
+  const lockfile = LOCKFILES.find((candidate) => fs.existsSync(path.join(dir, candidate.file)));
+  if (lockfile) return lockfile.packageManager === "yarn" ? resolveYarn(dir, declaredYarnVersion) : lockfile.packageManager;
+
   if (!declared) return undefined;
-  return declared[1] === "yarn" ? resolveYarn(dir, declared[2]) : (declared[1] as PackageManager);
+  return declared[1] === "yarn" ? resolveYarn(dir, declaredYarnVersion) : (declared[1] as PackageManager);
 }
 
 function fromUserAgent(targetDir: string, userAgent: string): PackageManager | undefined {

@@ -37,6 +37,12 @@ test("a yarn.lock without .yarnrc.yml means yarn classic, with it means berry", 
   assert.equal(detectPackageManager(projectWith({ "yarn.lock": "", ".yarnrc.yml": "nodeLinker: pnp" })), "yarn");
 });
 
+test("a declared yarn version decides classic vs berry, even with a yarn.lock", () => {
+  assert.equal(detectPackageManager(projectWith({ "yarn.lock": "", "package.json": '{"packageManager":"yarn@4.18.0"}' })), "yarn");
+  assert.equal(detectPackageManager(projectWith({ "yarn.lock": "", "package.json": '{"packageManager":"yarn@1.22.22"}' })), "yarn-classic");
+  assert.equal(detectPackageManager(projectWith({ "yarn.lock": "" }), "yarn@4.18.0"), "yarn");
+});
+
 test("the packageManager field is used when there is no lockfile", () => {
   assert.equal(detectPackageManager(createTempDir(), "pnpm@9.12.0", NPM_USER_AGENT), "pnpm");
   assert.equal(detectPackageManager(createTempDir(), "yarn@4.18.0"), "yarn");
