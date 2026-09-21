@@ -6,7 +6,7 @@ import path from "path";
 import prompts from "prompts";
 import { execSync } from "child_process";
 import { detectApps, DetectedApp, Platform } from "./detect";
-import { createProjectCommand, detectPackageManager, PackageManager, runCommand } from "./package-manager";
+import { createProjectCommand, detectPackageManager, isWorkspaceRoot, PackageManager, runCommand } from "./package-manager";
 import {
   chooseDefaultTestDir,
   createConfigContent,
@@ -124,7 +124,8 @@ function installDependencies(targetDir: string, language: Language, packageManag
   if (existing === undefined || Object.keys(existing).length === 0) writeJson(pkgPath, createNewPackageJson(targetDir));
 
   console.log("\nInstalling dependencies...\n");
-  for (const command of installCommands(planInstall(existing ?? {}, language, process.versions.node), packageManager, existing ?? {})) {
+  const plan = planInstall(existing ?? {}, language, process.versions.node);
+  for (const command of installCommands(plan, packageManager, isWorkspaceRoot(targetDir, existing?.workspaces))) {
     console.log(`${command}\n`);
     try {
       execSync(command, { cwd: targetDir, stdio: "inherit" });

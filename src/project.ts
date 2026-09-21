@@ -121,8 +121,7 @@ export function planInstall(pkg: PackageJson, language: Language, nodeVersion: s
   };
 }
 
-export function installCommands({ dependencies, devDependencies }: InstallPlan, packageManager: PackageManager, pkg: PackageJson = {}): string[] {
-  const isWorkspaceRoot = pkg.workspaces !== undefined;
+export function installCommands({ dependencies, devDependencies }: InstallPlan, packageManager: PackageManager, isWorkspaceRoot = false): string[] {
   const commands = [
     ...(devDependencies.length > 0 ? [installDevCommand(packageManager, devDependencies, isWorkspaceRoot)] : []),
     ...(dependencies.length > 0 ? [installProdCommand(packageManager, dependencies, isWorkspaceRoot)] : []),

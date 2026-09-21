@@ -1,4 +1,5 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 export type PackageManager = "npm" | "pnpm" | "yarn" | "yarn-classic" | "bun";
@@ -22,6 +23,43 @@ function isYarnClassic(targetDir: string, version: string | undefined): boolean 
   return version === undefined || version.startsWith("0.") || version.startsWith("1.");
 }
 
+/**
+ * The project directory and the workspace roots above it. Stops at the repository root and
+ * never leaves the home directory, so a stray lockfile in $HOME can't decide for a project.
+ */
+function ancestorDirs(dir: string, homeDir: string): string[] {
+  const dirs: string[] = [];
+  for (let current = dir; ; current = path.dirname(current)) {
+    dirs.push(current);
+    const parent = path.dirname(current);
+    if (fs.existsSync(path.join(current, ".git")) || current === homeDir || parent === current || parent === homeDir) {
+      return dirs;
+    }
+  }
+}
+
+function readPackageManagerField(dir: string): string | undefined {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8")).packageManager;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveYarn(dir: string, version: string | undefined): PackageManager {
+  return isYarnClassic(dir, version) ? "yarn-classic" : "yarn";
+}
+
+/** A package inside a workspace has no lockfile of its own; the workspace root above it does. */
+function fromProject(dir: string, packageManagerField: string | undefined): PackageManager | undefined {
+  const lockfile = LOCKFILES.find((candidate) => fs.existsSync(path.join(dir, candidate.file)));
+  if (lockfile) return lockfile.packageManager === "yarn" ? resolveYarn(dir, undefined) : lockfile.packageManager;
+
+  const declared = (packageManagerField ?? readPackageManagerField(dir))?.match(/^(npm|pnpm|yarn|bun)@?(\S+)?/);
+  if (!declared) return undefined;
+  return declared[1] === "yarn" ? resolveYarn(dir, declared[2]) : (declared[1] as PackageManager);
+}
+
 function fromUserAgent(targetDir: string, userAgent: string): PackageManager | undefined {
   const match = userAgent.match(/^(npm|pnpm|yarn|bun)\/(\S+)/);
   if (!match) return undefined;
@@ -34,16 +72,17 @@ function fromUserAgent(targetDir: string, userAgent: string): PackageManager | u
  * The lockfile in the project wins over the tool that started us: `npm init mobilewright`
  * inside a pnpm project should still install with pnpm.
  */
-export function detectPackageManager(targetDir: string, packageManagerField?: string, userAgent = process.env.npm_config_user_agent): PackageManager {
-  const lockfile = LOCKFILES.find((candidate) => fs.existsSync(path.join(targetDir, candidate.file)));
-  const declared = packageManagerField?.match(/^(npm|pnpm|yarn|bun)@?(\S+)?/);
-  const detected = lockfile?.packageManager ?? (declared ? (declared[1] as PackageManager) : undefined);
-
-  if (detected === "yarn") {
-    return isYarnClassic(targetDir, declared?.[1] === "yarn" ? declared[2] : undefined) ? "yarn-classic" : "yarn";
+export function detectPackageManager(targetDir: string, packageManagerField?: string, userAgent = process.env.npm_config_user_agent, homeDir = os.homedir()): PackageManager {
+  for (const dir of ancestorDirs(targetDir, homeDir)) {
+    const detected = fromProject(dir, dir === targetDir ? packageManagerField : undefined);
+    if (detected) return detected;
   }
-  if (detected) return detected;
   return (userAgent ? fromUserAgent(targetDir, userAgent) : undefined) ?? "npm";
+}
+
+// pnpm workspaces live in pnpm-workspace.yaml, every other manager declares them in package.json
+export function isWorkspaceRoot(targetDir: string, workspacesField: unknown): boolean {
+  return workspacesField !== undefined || fs.existsSync(path.join(targetDir, "pnpm-workspace.yaml"));
 }
 
 // yarn 1 and pnpm refuse to add a dependency in a workspace root without this flag

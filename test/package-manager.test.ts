@@ -3,12 +3,15 @@ import assert from "node:assert/strict";
 import {
   createProjectCommand,
   detectPackageManager,
+  isWorkspaceRoot,
   installAllCommand,
   installDevCommand,
   installProdCommand,
   PackageManager,
   runCommand,
 } from "../src/package-manager";
+import fs from "fs";
+import path from "path";
 import { createTempDir, writeFile } from "./helpers";
 
 const NPM_USER_AGENT = "npm/11.19.0 node/v24.21.0 darwin arm64 workspaces/false";
@@ -46,6 +49,35 @@ test("otherwise the tool that started us decides", () => {
   assert.equal(detectPackageManager(createTempDir(), undefined, BUN_USER_AGENT), "bun");
   assert.equal(detectPackageManager(createTempDir(), undefined, undefined), "npm");
   assert.equal(detectPackageManager(createTempDir(), undefined, "deno/2.0.0"), "npm");
+});
+
+test("a package inside a workspace uses the workspace root's package manager", () => {
+  const root = projectWith({ "pnpm-lock.yaml": "", "pnpm-workspace.yaml": "packages:\n  - packages/*" });
+  const child = path.join(root, "packages", "app");
+  fs.mkdirSync(child, { recursive: true });
+  writeFile(child, "package.json", '{"name":"app"}');
+
+  assert.equal(detectPackageManager(child, undefined, NPM_USER_AGENT), "pnpm");
+  assert.equal(detectPackageManager(root, undefined, NPM_USER_AGENT), "pnpm");
+});
+
+test("a lockfile outside the repository, for example in the home directory, is ignored", () => {
+  const home = createTempDir("home");
+  writeFile(home, "yarn.lock", "");
+  const project = path.join(home, "my-project");
+  fs.mkdirSync(path.join(project, ".git"), { recursive: true });
+  writeFile(project, "package.json", '{"name":"my-project"}');
+  const nested = path.join(project, "e2e");
+  fs.mkdirSync(nested);
+
+  assert.equal(detectPackageManager(project, undefined, NPM_USER_AGENT, home), "npm");
+  assert.equal(detectPackageManager(nested, undefined, NPM_USER_AGENT, home), "npm");
+});
+
+test("pnpm workspace roots are recognized without a workspaces field in package.json", () => {
+  assert.equal(isWorkspaceRoot(projectWith({ "pnpm-workspace.yaml": "packages:\n  - packages/*" }), undefined), true);
+  assert.equal(isWorkspaceRoot(createTempDir(), ["packages/*"]), true);
+  assert.equal(isWorkspaceRoot(createTempDir(), undefined), false);
 });
 
 test("each package manager gets its own install commands", () => {
